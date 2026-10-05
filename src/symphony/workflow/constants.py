@@ -13,7 +13,9 @@ import re
 
 SUPPORTED_TRACKER_KINDS = {"linear", "file", "jira", "github"}
 LINEAR_DEFAULT_ENDPOINT = "https://api.linear.app/graphql"
-LINEAR_API_KEY_ENV = "LINEAR_API_KEY"\nGITHUB_DEFAULT_ENDPOINT = "https://api.github.com"\nGITHUB_TOKEN_ENV = "GITHUB_TOKEN"
+LINEAR_API_KEY_ENV = "LINEAR_API_KEY"
+GITHUB_DEFAULT_ENDPOINT = "https://api.github.com"
+GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
 # Jira Cloud Basic Auth uses (account email, API token).
 # Tokens are minted at id.atlassian.com → "Manage account" → "Security".
 JIRA_API_TOKEN_ENV = "JIRA_API_TOKEN"
