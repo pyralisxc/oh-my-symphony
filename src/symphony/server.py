@@ -198,7 +198,19 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
     async def handle_health(_request: web.Request) -> web.Response:
         return web.json_response(orchestrator.health())
 
+    async def handle_dispatch_state(_request: web.Request) -> web.Response:
+        return web.json_response(orchestrator.dispatch_control_snapshot())
+
+    async def handle_dispatch_enable(_request: web.Request) -> web.Response:
+        return web.json_response(orchestrator.set_dispatch_enabled(True))
+
+    async def handle_dispatch_disable(_request: web.Request) -> web.Response:
+        return web.json_response(orchestrator.set_dispatch_enabled(False))
+
     app.router.add_get("/api/v1/health", handle_health)
+    app.router.add_get("/api/v1/dispatch", handle_dispatch_state)
+    app.router.add_post("/api/v1/dispatch/enable", handle_dispatch_enable)
+    app.router.add_post("/api/v1/dispatch/disable", handle_dispatch_disable)
     app.router.add_get("/api/v1/state", handle_state)
     app.router.add_get("/api/v1/refresh", handle_method_not_allowed)
     app.router.add_post("/api/v1/refresh", handle_refresh)

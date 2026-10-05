@@ -98,6 +98,8 @@ from .constants import (
     DEFAULT_TERMINAL_STATES,
     DEFAULT_WORKSPACE_REUSE_POLICY,
     JIRA_API_TOKEN_ENV,
+    GITHUB_DEFAULT_ENDPOINT,
+    GITHUB_TOKEN_ENV,
     JIRA_EMAIL_ENV,
     LINEAR_API_KEY_ENV,
     LINEAR_DEFAULT_ENDPOINT,
@@ -166,7 +168,11 @@ def build_service_config(
 
     tracker_kind = _as_str(tracker_raw.get("kind")).strip()
     endpoint_default = (
-        LINEAR_DEFAULT_ENDPOINT if tracker_kind == "linear" else _as_str(tracker_raw.get("endpoint"))
+        LINEAR_DEFAULT_ENDPOINT
+        if tracker_kind == "linear"
+        else GITHUB_DEFAULT_ENDPOINT
+        if tracker_kind == "github"
+        else _as_str(tracker_raw.get("endpoint"))
     )
     tracker_endpoint = _as_str(tracker_raw.get("endpoint"), endpoint_default)
     raw_api_key = tracker_raw.get("api_key")
@@ -175,6 +181,8 @@ def build_service_config(
         raw_api_key = "$" + LINEAR_API_KEY_ENV
     if raw_api_key is None and tracker_kind == "jira":
         raw_api_key = "$" + JIRA_API_TOKEN_ENV
+    if raw_api_key is None and tracker_kind == "github":
+        raw_api_key = "$" + GITHUB_TOKEN_ENV
     tracker_api_key = _as_str(resolve_var_indirection(raw_api_key))
 
     raw_email = tracker_raw.get("email")

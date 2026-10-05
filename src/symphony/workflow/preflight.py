@@ -52,6 +52,15 @@ def validate_for_dispatch(config: ServiceConfig) -> None:
             raise MissingTrackerProjectSlug(
                 "tracker.project_slug required for linear tracker"
             )
+    if config.tracker.kind == "github":
+        if not config.tracker.api_key:
+            raise MissingTrackerApiKey(
+                "tracker.api_key missing or empty after $VAR resolution"
+            )
+        if not config.tracker.project_slug or "/" not in config.tracker.project_slug:
+            raise MissingTrackerProjectSlug(
+                "tracker.project_slug required for github tracker (owner/repository)"
+            )
     if config.tracker.kind == "file":
         if config.tracker.board_root is None:
             raise ConfigValidationError(
