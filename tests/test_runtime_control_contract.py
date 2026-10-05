@@ -76,6 +76,10 @@ def test_terminate_pauses_before_cancelling_and_preserves_identity(tmp_path: Pat
                 stopped.set()
 
         task = asyncio.create_task(worker())
+        # Let the synthetic worker enter its body before cancellation so the
+        # test exercises real in-flight cleanup rather than cancelling an
+        # as-yet-unstarted coroutine.
+        await asyncio.sleep(0)
         entry = RunningEntry(
             issue=issue,
             started_at=datetime.now(timezone.utc),
