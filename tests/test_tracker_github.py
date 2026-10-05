@@ -25,12 +25,26 @@ def test_github_tracker_projects_status_labels_and_filters_pull_requests():
             200,
             json=[
                 {
+                    "number": 6,
+                    "title": "Not eligible",
+                    "body": "body",
+                    "state": "open",
+                    "html_url": "https://github.test/owner/repo/issues/6",
+                    "labels": [{"name": "status:ready"}],
+                    "created_at": "2026-10-05T00:00:00Z",
+                    "updated_at": "2026-10-05T00:00:00Z",
+                },
+                {
                     "number": 7,
                     "title": "Do work",
                     "body": "body",
                     "state": "open",
                     "html_url": "https://github.test/owner/repo/issues/7",
-                    "labels": [{"name": "status:ready"}, {"name": "kind:feature"}],
+                    "labels": [
+                        {"name": "status:ready"},
+                        {"name": "kind:feature"},
+                        {"name": "automation-eligible"},
+                    ],
                     "created_at": "2026-10-05T00:00:00Z",
                     "updated_at": "2026-10-05T00:00:00Z",
                 },
@@ -51,7 +65,11 @@ def test_github_tracker_projects_status_labels_and_filters_pull_requests():
     assert [i.identifier for i in issues] == ["GH-7"]
     assert issues[0].id == "7"
     assert issues[0].state == "Ready"
-    assert issues[0].labels == ("status:ready", "kind:feature")
+    assert issues[0].labels == (
+        "status:ready",
+        "kind:feature",
+        "automation-eligible",
+    )
 
 
 def test_github_tracker_state_write_preserves_unrelated_labels():

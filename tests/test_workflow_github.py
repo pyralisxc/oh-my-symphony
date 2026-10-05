@@ -22,7 +22,14 @@ def test_github_tracker_uses_standard_defaults(tmp_path, monkeypatch):
         load_workflow(
             _write(
                 tmp_path,
-                "---\ntracker:\n  kind: github\n  project_slug: owner/repo\n---\nBody\n",
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "agent:\n"
+                "  feature_base_branch: preview\n"
+                "  auto_merge_target_branch: preview\n"
+                "---\nBody\n",
             )
         )
     )
@@ -56,4 +63,69 @@ def test_github_tracker_requires_token(tmp_path, monkeypatch):
         )
     )
     with pytest.raises(MissingTrackerApiKey):
+        validate_for_dispatch(cfg)
+
+
+def test_github_tracker_canary_rejects_concurrency_above_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-token")
+    cfg = build_service_config(
+        load_workflow(
+            _write(
+                tmp_path,
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "agent:\n"
+                "  max_concurrent_agents: 2\n"
+                "  feature_base_branch: preview\n"
+                "  auto_merge_target_branch: preview\n"
+                "---\nBody\n",
+            )
+        )
+    )
+    with pytest.raises(Exception, match="max_concurrent_agents=1"):
+        validate_for_dispatch(cfg)
+
+
+def test_github_tracker_canary_rejects_main_delivery_target(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-token")
+    cfg = build_service_config(
+        load_workflow(
+            _write(
+                tmp_path,
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "agent:\n"
+                "  feature_base_branch: preview\n"
+                "  auto_merge_target_branch: main\n"
+                "---\nBody\n",
+            )
+        )
+    )
+    with pytest.raises(Exception, match="refuses automatic merge"):
+        validate_for_dispatch(cfg)
+
+
+def test_github_tracker_canary_requires_explicit_preview_feature_base(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-token")
+    cfg = build_service_config(
+        load_workflow(
+            _write(
+                tmp_path,
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "agent:\n"
+                "  auto_merge_on_done: false\n"
+                "---\nBody\n",
+            )
+        )
+    )
+    with pytest.raises(Exception, match="feature_base_branch"):
         validate_for_dispatch(cfg)
