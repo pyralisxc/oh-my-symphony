@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from symphony.errors import (\n    ConfigValidationError,\n    MissingTrackerApiKey,\n    MissingTrackerProjectSlug,\n)
+from symphony.errors import (
+    ConfigValidationError,
+    MissingTrackerApiKey,
+    MissingTrackerProjectSlug,
+)
 from symphony.workflow import (
     build_service_config,
     load_workflow,
