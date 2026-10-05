@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from symphony.errors import MissingTrackerApiKey, MissingTrackerProjectSlug
+from symphony.errors import (\n    ConfigValidationError,\n    MissingTrackerApiKey,\n    MissingTrackerProjectSlug,\n)
 from symphony.workflow import (
     build_service_config,
     load_workflow,
@@ -84,7 +84,7 @@ def test_github_tracker_canary_rejects_concurrency_above_one(tmp_path, monkeypat
             )
         )
     )
-    with pytest.raises(Exception, match="max_concurrent_agents=1"):
+    with pytest.raises(ConfigValidationError, match="max_concurrent_agents=1"):
         validate_for_dispatch(cfg)
 
 
@@ -105,7 +105,7 @@ def test_github_tracker_canary_rejects_main_delivery_target(tmp_path, monkeypatc
             )
         )
     )
-    with pytest.raises(Exception, match="refuses automatic merge"):
+    with pytest.raises(ConfigValidationError, match="refuses automatic merge"):
         validate_for_dispatch(cfg)
 
 
@@ -127,5 +127,5 @@ def test_github_tracker_canary_requires_explicit_preview_feature_base(
             )
         )
     )
-    with pytest.raises(Exception, match="feature_base_branch"):
+    with pytest.raises(ConfigValidationError, match="feature_base_branch"):
         validate_for_dispatch(cfg)
