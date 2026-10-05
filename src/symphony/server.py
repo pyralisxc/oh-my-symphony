@@ -109,6 +109,31 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
             }
         )
 
+    async def handle_terminate(request: web.Request) -> web.Response:
+        identifier = request.match_info.get("identifier", "")
+        issue_id = orchestrator.find_running_issue_id(identifier)
+        if issue_id is None:
+            return _error_response(
+                404, "issue_not_running", f"no running worker for {identifier}"
+            )
+        changed = orchestrator.terminate_worker(issue_id)
+        if not changed:
+            return _error_response(
+                409,
+                "worker_terminate_rejected",
+                f"worker for {identifier} is already stopping or not cancellable",
+            )
+        return web.json_response(
+            {
+                "issue_identifier": identifier,
+                "issue_id": issue_id,
+                "terminated": True,
+                "paused": True,
+                "recovery_preserved": True,
+            },
+            status=202,
+        )
+
     async def handle_skip_document(request: web.Request) -> web.Response:
         identifier = request.match_info.get("identifier", "")
         changed, message = await orchestrator.skip_document(identifier)
@@ -221,6 +246,7 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
     register_web_routes(app, orchestrator)
     app.router.add_post("/api/v1/{identifier}/pause", handle_pause)
     app.router.add_post("/api/v1/{identifier}/resume", handle_resume)
+    app.router.add_post("/api/v1/{identifier}/terminate", handle_terminate)
     app.router.add_post("/api/v1/{identifier}/recover-blocked", handle_recover_blocked)
     app.router.add_post("/api/v1/{identifier}/skip-document", handle_skip_document)
     # Deprecated alias — lane renamed Learn -> Document; old scripts keep working.

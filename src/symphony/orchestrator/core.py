@@ -3517,6 +3517,28 @@ class Orchestrator:
             "issue_identifier": entry.issue.identifier,
             "state": entry.issue.state,
             "agent_kind": self._entry_agent_kind(entry),
+            "run": {
+                "id": entry.run_id or None,
+                "continued_from_run_id": entry.continued_from_run_id or None,
+            },
+            "worker": {
+                "process_id": (
+                    _backend_agent_pid(entry.client)
+                    if entry.client is not None
+                    else entry.agent_pgid
+                ),
+                "process_group_id": entry.agent_pgid,
+            },
+            "session": {
+                "session_id": entry.session_id,
+                "thread_id": entry.thread_id,
+                "turn_id": entry.turn_id,
+                "recovery_resumed": entry.recovery_session_resumed,
+            },
+            "workspace": {
+                "path": str(entry.workspace_path),
+                "branch": f"{SYMPHONY_BRANCH_PREFIX}{entry.issue.identifier}",
+            },
             "turn_count": total_turn_count,
             "total_turn_count": total_turn_count,
             "attempt_turn_count": entry.turn_count,
@@ -3641,6 +3663,45 @@ class Orchestrator:
                 self._on_retry_timer(issue_id),
                 name=f"symphony-retry-now-{identifier}",
             )
+        return True
+
+    def terminate_worker(self, issue_id: str) -> bool:
+        """Stop one owned worker while preserving resumable runtime state.
+
+        Termination is deliberately distinct from both dispatch disable and
+        destructive reset. The issue is durably paused first, then the owned
+        worker task is cancelled so the existing worker-finalization path can
+        stop the backend, preserve the latest completed-turn checkpoint, and
+        release its run lease. Because the issue remains paused, retry logic
+        cannot silently start a replacement until an operator explicitly
+        resumes it.
+        """
+        entry = self._running.get(issue_id)
+        if entry is None:
+            return False
+        task = entry.worker_task
+        if task is None or task.done():
+            return False
+
+        reason = "operator terminate"
+        if issue_id not in self._paused_issue_ids:
+            self.pause_worker(issue_id, reason=reason)
+        else:
+            self._pause_reasons[issue_id] = reason
+            self._set_issue_flags(
+                issue_id,
+                paused=True,
+                pause_reason=reason,
+            )
+
+        entry.cancelled_at = datetime.now(timezone.utc)
+        task.cancel()
+        log.info(
+            "worker_terminate_requested",
+            issue_id=issue_id,
+            identifier=entry.issue.identifier,
+            run_id=entry.run_id or None,
+        )
         return True
 
     def find_running_issue_id(self, identifier: str) -> str | None:
