@@ -133,7 +133,7 @@ from .release_cycle import (
     release_ticket_version_token as _release_ticket_version_token,
     release_verifier_state as _release_verifier_state,
 )
-from .dispatch_state import DispatchState
+from .dispatch_state import DispatchState\nfrom .dispatch_gate import DispatchGate
 from .entries import RetryEntry, RunningEntry, _CodexTotals, _IssueDebug
 from .executors import LegacyStageExecutor, TicketExecutor, TicketRunContext
 from .helpers import (
@@ -943,6 +943,11 @@ class Orchestrator:
         # read-only properties below keep the many legacy read sites (and
         # tests) working; mutations should go through its methods.
         self._dispatch_state = DispatchState()
+        self._dispatch_gate = DispatchGate(
+            workflow_state.path.expanduser().resolve().parent
+            / ".symphony"
+            / "dispatch.json"
+        )
         # C5 — `Done`-transition counter for the periodic wiki sweep. Lives
         # in-process; restart resets it (acceptable — the sweep is a
         # housekeeping nudge, not a correctness gate). Wraparound at
@@ -3094,6 +3099,21 @@ class Orchestrator:
     # snapshot / API surface (§13.3, §13.7)
     # ------------------------------------------------------------------
 
+    def dispatch_control_snapshot(self) -> dict[str, Any]:
+        return self._dispatch_gate.snapshot()
+
+    def set_dispatch_enabled(self, enabled: bool) -> dict[str, Any]:
+        snapshot = self._dispatch_gate.set_enabled(enabled)
+        if enabled:
+            self.request_refresh()
+        return snapshot
+
+    def _dispatch_allowed(self, cfg: ServiceConfig) -> bool:
+        # Safety migration: the new GitHub autonomous lane is opt-in and
+        # fail-closed. Existing file/Linear/Jira boards retain their
+        # established behavior until they explicitly adopt this control.
+        return cfg.tracker.kind != "github" or self._dispatch_gate.enabled
+
     def request_refresh(self) -> bool:
         """§13.7.2 POST /refresh — schedule an immediate tick."""
         if self._refresh_pending:
@@ -4040,6 +4060,18 @@ class Orchestrator:
             validate_for_dispatch(cfg)
         except SymphonyError as exc:
             log.error("dispatch_validation_failed", error=str(exc))
+            await self._notify_observers()
+            return
+
+        if not self._dispatch_allowed(cfg):
+            self._schedule_snapshot = {
+                "schema_version": 1,
+                "available": False,
+                "reason": "dispatch_disabled",
+                "generated_at": _utc_iso_z(),
+                "stale": False,
+                "entries": [],
+            }
             await self._notify_observers()
             return
 

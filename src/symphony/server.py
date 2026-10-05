@@ -199,6 +199,9 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
         return web.json_response(orchestrator.health())
 
     app.router.add_get("/api/v1/health", handle_health)
+    app.router.add_get("/api/v1/dispatch", handle_dispatch_state)
+    app.router.add_post("/api/v1/dispatch/enable", handle_dispatch_enable)
+    app.router.add_post("/api/v1/dispatch/disable", handle_dispatch_disable)
     app.router.add_get("/api/v1/state", handle_state)
     app.router.add_get("/api/v1/refresh", handle_method_not_allowed)
     app.router.add_post("/api/v1/refresh", handle_refresh)
