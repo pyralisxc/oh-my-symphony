@@ -62,6 +62,8 @@ from .constants import (
     DEFAULT_TERMINAL_STATES,
     DEFAULT_WORKSPACE_REUSE_POLICY,
     JIRA_API_TOKEN_ENV,
+    GITHUB_DEFAULT_ENDPOINT,
+    GITHUB_TOKEN_ENV,
     JIRA_EMAIL_ENV,
     LINEAR_API_KEY_ENV,
     LINEAR_DEFAULT_ENDPOINT,
@@ -88,6 +90,8 @@ from .coercion import (
 from .config import (
     AgentConfig,
     AgyConfig,
+    AutoPrConfig,
+    GitConfig,
     ClaudeConfig,
     CodexConfig,
     ContinuousImprovementConfig,
@@ -125,6 +129,8 @@ __all__ = [
     "HooksConfig",
     "AgentConfig",
     "AgyConfig",
+    "AutoPrConfig",
+    "GitConfig",
     "CodexConfig",
     "ClaudeConfig",
     "GeminiConfig",
@@ -178,4 +184,6 @@ __all__ = [
     "LINEAR_DEFAULT_ENDPOINT",
     "JIRA_API_TOKEN_ENV",
     "JIRA_EMAIL_ENV",
+    "GITHUB_DEFAULT_ENDPOINT",
+    "GITHUB_TOKEN_ENV",
 ]

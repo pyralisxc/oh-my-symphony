@@ -707,6 +707,13 @@ async def _transition_phase(
         orch._record_stats_transition(
             st.issue.identifier, st.prev_phase_state, st.current_state
         )
+        if not is_rewind:
+            await orch._observed_transition_side_effects(
+                st.cfg,
+                st.issue,
+                st.prev_phase_state_raw or st.prev_phase_state,
+                st.issue.state or st.current_state,
+            )
     except Exception as exc:
         return _AttemptExit("phase_transition_error", str(exc))
     return _TurnFlow.CONTINUE
@@ -1028,6 +1035,19 @@ async def _evaluate_turn_result(
         contract_rewound = outcome.rewound
         if contract_rewound:
             orch._record_stats_transition(st.issue.identifier, "done", state)
+    if (
+        not release_rewound
+        and not contract_rewound
+        and state not in active
+        and state != st.prev_phase_state
+    ):
+        await orch._observed_transition_side_effects(
+            st.cfg,
+            st.issue,
+            st.prev_phase_state_raw or st.prev_phase_state,
+            st.issue.state or state,
+        )
+
     if release_rewound or contract_rewound:
         st.debug.rewind_count += 1
         if (

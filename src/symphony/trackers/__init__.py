@@ -7,7 +7,7 @@ Adapters live as submodules:
 
     symphony.trackers.file    -> FileBoardTracker  (Markdown ticket files)
     symphony.trackers.linear  -> LinearClient      (Linear GraphQL)
-    symphony.trackers.jira    -> JiraClient        (Jira Cloud REST API v3)
+    symphony.trackers.jira    -> JiraClient        (Jira Cloud REST API v3)\n    symphony.trackers.github  -> GitHubClient      (GitHub Issues REST API)
 """
 
 from __future__ import annotations

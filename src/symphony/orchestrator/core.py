@@ -36,6 +36,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar, cast
 from .. import __version__
 from .._shell import kill_process_group, process_group_exists, process_identity
 from ..artifacts import ArtifactRecord, ArtifactStore, format_bytes
+from ..auto_pr import maybe_open_pull_request
 from ..backends import (
     EVENT_AGENT_RETRY,
     EVENT_APPROVAL_DENIED,
@@ -134,6 +135,7 @@ from .release_cycle import (
     release_verifier_state as _release_verifier_state,
 )
 from .dispatch_state import DispatchState
+from .dispatch_gate import DispatchGate
 from .entries import RetryEntry, RunningEntry, _CodexTotals, _IssueDebug
 from .executors import LegacyStageExecutor, TicketExecutor, TicketRunContext
 from .helpers import (
@@ -943,6 +945,11 @@ class Orchestrator:
         # read-only properties below keep the many legacy read sites (and
         # tests) working; mutations should go through its methods.
         self._dispatch_state = DispatchState()
+        self._dispatch_gate = DispatchGate(
+            workflow_state.path.expanduser().resolve().parent
+            / ".symphony"
+            / "dispatch.json"
+        )
         # C5 — `Done`-transition counter for the periodic wiki sweep. Lives
         # in-process; restart resets it (acceptable — the sweep is a
         # housekeeping nudge, not a correctness gate). Wraparound at
@@ -3094,6 +3101,21 @@ class Orchestrator:
     # snapshot / API surface (§13.3, §13.7)
     # ------------------------------------------------------------------
 
+    def dispatch_control_snapshot(self) -> dict[str, Any]:
+        return self._dispatch_gate.snapshot()
+
+    def set_dispatch_enabled(self, enabled: bool) -> dict[str, Any]:
+        snapshot = self._dispatch_gate.set_enabled(enabled)
+        if enabled:
+            self.request_refresh()
+        return snapshot
+
+    def _dispatch_allowed(self, cfg: ServiceConfig) -> bool:
+        # Safety migration: the new GitHub autonomous lane is opt-in and
+        # fail-closed. Existing file/Linear/Jira boards retain their
+        # established behavior until they explicitly adopt this control.
+        return cfg.tracker.kind != "github" or self._dispatch_gate.enabled
+
     def request_refresh(self) -> bool:
         """§13.7.2 POST /refresh — schedule an immediate tick."""
         if self._refresh_pending:
@@ -3496,6 +3518,28 @@ class Orchestrator:
             "issue_identifier": entry.issue.identifier,
             "state": entry.issue.state,
             "agent_kind": self._entry_agent_kind(entry),
+            "run": {
+                "id": entry.run_id or None,
+                "continued_from_run_id": entry.continued_from_run_id or None,
+            },
+            "worker": {
+                "process_id": (
+                    _backend_agent_pid(entry.client)
+                    if entry.client is not None
+                    else entry.agent_pgid
+                ),
+                "process_group_id": entry.agent_pgid,
+            },
+            "session": {
+                "session_id": entry.session_id,
+                "thread_id": entry.thread_id,
+                "turn_id": entry.turn_id,
+                "recovery_resumed": entry.recovery_session_resumed,
+            },
+            "workspace": {
+                "path": str(entry.workspace_path),
+                "branch": f"{SYMPHONY_BRANCH_PREFIX}{entry.issue.identifier}",
+            },
             "turn_count": total_turn_count,
             "total_turn_count": total_turn_count,
             "attempt_turn_count": entry.turn_count,
@@ -3620,6 +3664,45 @@ class Orchestrator:
                 self._on_retry_timer(issue_id),
                 name=f"symphony-retry-now-{identifier}",
             )
+        return True
+
+    def terminate_worker(self, issue_id: str) -> bool:
+        """Stop one owned worker while preserving resumable runtime state.
+
+        Termination is deliberately distinct from both dispatch disable and
+        destructive reset. The issue is durably paused first, then the owned
+        worker task is cancelled so the existing worker-finalization path can
+        stop the backend, preserve the latest completed-turn checkpoint, and
+        release its run lease. Because the issue remains paused, retry logic
+        cannot silently start a replacement until an operator explicitly
+        resumes it.
+        """
+        entry = self._running.get(issue_id)
+        if entry is None:
+            return False
+        task = entry.worker_task
+        if task is None or task.done():
+            return False
+
+        reason = "operator terminate"
+        if issue_id not in self._paused_issue_ids:
+            self.pause_worker(issue_id, reason=reason)
+        else:
+            self._pause_reasons[issue_id] = reason
+            self._set_issue_flags(
+                issue_id,
+                paused=True,
+                pause_reason=reason,
+            )
+
+        entry.cancelled_at = datetime.now(timezone.utc)
+        task.cancel()
+        log.info(
+            "worker_terminate_requested",
+            issue_id=issue_id,
+            identifier=entry.issue.identifier,
+            run_id=entry.run_id or None,
+        )
         return True
 
     def find_running_issue_id(self, identifier: str) -> str | None:
@@ -4040,6 +4123,18 @@ class Orchestrator:
             validate_for_dispatch(cfg)
         except SymphonyError as exc:
             log.error("dispatch_validation_failed", error=str(exc))
+            await self._notify_observers()
+            return
+
+        if not self._dispatch_allowed(cfg):
+            self._schedule_snapshot = {
+                "schema_version": 1,
+                "available": False,
+                "reason": "dispatch_disabled",
+                "generated_at": _utc_iso_z(),
+                "stale": False,
+                "entries": [],
+            }
             await self._notify_observers()
             return
 
@@ -4798,11 +4893,53 @@ class Orchestrator:
         finally:
             client.close()
         self._record_stats_transition(issue.identifier, issue.state, target_state)
-        # Notifications fire after the tracker write succeeds. If the write
-        # raised, we never reach here — operators see the failure in logs
-        # instead of a misleading "moved to X" Slack ping. Lenient by
-        # design: dispatch_notification swallows network errors.
+        # Notifications and delivery side effects fire only after the tracker
+        # write succeeds. They are lenient: a Slack or PR transport failure
+        # must not turn a valid state transition into a broken worker.
         _notify_state_transition(cfg, issue, target_state)
+        maybe_open_pull_request(
+            cfg,
+            issue,
+            target_state,
+            append_note=lambda i, heading, body: self._tracker_call_append_note(
+                cfg, i, heading, body
+            ),
+        )
+
+    async def _observed_transition_side_effects(
+        self,
+        cfg: ServiceConfig,
+        issue: Issue,
+        prev_state: str,
+        target_state: str,
+    ) -> None:
+        """Mirror host-owned side effects for worker-written tracker moves."""
+        if normalize_state(prev_state) == normalize_state(target_state):
+            return
+        if not (cfg.notifications.has_any() or cfg.git.auto_pr.enabled):
+            return
+        try:
+            event_issue = replace(issue, state=prev_state) if prev_state else issue
+            await asyncio.to_thread(
+                _notify_state_transition, cfg, event_issue, target_state
+            )
+            await asyncio.to_thread(
+                maybe_open_pull_request,
+                cfg,
+                issue,
+                target_state,
+                append_note=lambda i, heading, body: self._tracker_call_append_note(
+                    cfg, i, heading, body
+                ),
+            )
+        except Exception as exc:
+            log.warning(
+                "observed_transition_side_effects_failed",
+                issue_id=issue.id,
+                identifier=issue.identifier,
+                to_state=target_state,
+                error=str(exc),
+            )
 
     @staticmethod
     def _tracker_call_append_note(

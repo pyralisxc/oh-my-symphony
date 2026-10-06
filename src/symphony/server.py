@@ -109,6 +109,31 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
             }
         )
 
+    async def handle_terminate(request: web.Request) -> web.Response:
+        identifier = request.match_info.get("identifier", "")
+        issue_id = orchestrator.find_running_issue_id(identifier)
+        if issue_id is None:
+            return _error_response(
+                404, "issue_not_running", f"no running worker for {identifier}"
+            )
+        changed = orchestrator.terminate_worker(issue_id)
+        if not changed:
+            return _error_response(
+                409,
+                "worker_terminate_rejected",
+                f"worker for {identifier} is already stopping or not cancellable",
+            )
+        return web.json_response(
+            {
+                "issue_identifier": identifier,
+                "issue_id": issue_id,
+                "terminated": True,
+                "paused": True,
+                "recovery_preserved": True,
+            },
+            status=202,
+        )
+
     async def handle_skip_document(request: web.Request) -> web.Response:
         identifier = request.match_info.get("identifier", "")
         changed, message = await orchestrator.skip_document(identifier)
@@ -198,7 +223,19 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
     async def handle_health(_request: web.Request) -> web.Response:
         return web.json_response(orchestrator.health())
 
+    async def handle_dispatch_state(_request: web.Request) -> web.Response:
+        return web.json_response(orchestrator.dispatch_control_snapshot())
+
+    async def handle_dispatch_enable(_request: web.Request) -> web.Response:
+        return web.json_response(orchestrator.set_dispatch_enabled(True))
+
+    async def handle_dispatch_disable(_request: web.Request) -> web.Response:
+        return web.json_response(orchestrator.set_dispatch_enabled(False))
+
     app.router.add_get("/api/v1/health", handle_health)
+    app.router.add_get("/api/v1/dispatch", handle_dispatch_state)
+    app.router.add_post("/api/v1/dispatch/enable", handle_dispatch_enable)
+    app.router.add_post("/api/v1/dispatch/disable", handle_dispatch_disable)
     app.router.add_get("/api/v1/state", handle_state)
     app.router.add_get("/api/v1/refresh", handle_method_not_allowed)
     app.router.add_post("/api/v1/refresh", handle_refresh)
@@ -209,6 +246,7 @@ def build_app(orchestrator: Orchestrator) -> web.Application:
     register_web_routes(app, orchestrator)
     app.router.add_post("/api/v1/{identifier}/pause", handle_pause)
     app.router.add_post("/api/v1/{identifier}/resume", handle_resume)
+    app.router.add_post("/api/v1/{identifier}/terminate", handle_terminate)
     app.router.add_post("/api/v1/{identifier}/recover-blocked", handle_recover_blocked)
     app.router.add_post("/api/v1/{identifier}/skip-document", handle_skip_document)
     # Deprecated alias — lane renamed Learn -> Document; old scripts keep working.
@@ -229,10 +267,9 @@ async def run_server(
     # when the server itself is loopback-bound; record the bind address.
     app[BIND_HOST_KEY] = host
     if host.lower() not in _LOOPBACK_BINDS and _configured_api_token() is None:
-        log.warning(
-            "http_server_unauthenticated_on_network_bind",
-            host=host,
-            hint=f"set {API_TOKEN_ENV} or bind to 127.0.0.1",
+        raise RuntimeError(
+            f"refusing unauthenticated non-loopback bind {host!r}; "
+            f"set {API_TOKEN_ENV} or bind to 127.0.0.1"
         )
     runner = web.AppRunner(app)
     await runner.setup()

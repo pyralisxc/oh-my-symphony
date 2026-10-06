@@ -615,6 +615,21 @@ class ContinuousImprovementConfig:
 
 
 @dataclass(frozen=True)
+class AutoPrConfig:
+    """Host-owned PR handoff when a ticket reaches the configured lane."""
+
+    enabled: bool = False
+    remote: str = "origin"
+    base: str = ""
+    trigger_state: str = "Review"
+
+
+@dataclass(frozen=True)
+class GitConfig:
+    auto_pr: AutoPrConfig = field(default_factory=AutoPrConfig)
+
+
+@dataclass(frozen=True)
 class ServiceConfig:
     workflow_path: Path
     poll_interval_ms: int
@@ -651,6 +666,7 @@ class ServiceConfig:
     # Ticket artifact collection — appended after the original fields so
     # positional ServiceConfig callers keep receiving the same values.
     artifacts: ArtifactsConfig = field(default_factory=ArtifactsConfig)
+    git: GitConfig = field(default_factory=GitConfig)
 
     def prompt_template_for_state(self, state: str) -> str:
         """Return the runtime prompt template for one tracker state."""
