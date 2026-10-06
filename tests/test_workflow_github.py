@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -7,6 +8,7 @@ from symphony.errors import (
     MissingTrackerApiKey,
     MissingTrackerProjectSlug,
 )
+from symphony.trackers import build_tracker_client
 from symphony.workflow import (
     build_service_config,
     load_workflow,
@@ -40,6 +42,29 @@ def test_github_tracker_uses_standard_defaults(tmp_path, monkeypatch):
     assert cfg.tracker.endpoint == "https://api.github.com"
     assert cfg.tracker.api_key == "gh-token"
     validate_for_dispatch(cfg)
+
+
+def test_github_tracker_factory_constructs_github_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-token")
+    cfg = build_service_config(
+        load_workflow(
+            _write(
+                tmp_path,
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "agent:\n"
+                "  feature_base_branch: preview\n"
+                "  auto_merge_target_branch: preview\n"
+                "---\nBody\n",
+            )
+        )
+    )
+    with patch("symphony.trackers.github.GitHubClient") as github_client:
+        client = build_tracker_client(cfg)
+    github_client.assert_called_once_with(cfg.tracker)
+    assert client is github_client.return_value
 
 
 def test_github_tracker_requires_owner_repo(tmp_path, monkeypatch):

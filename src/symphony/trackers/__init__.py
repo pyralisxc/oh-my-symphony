@@ -71,6 +71,10 @@ def build_tracker_client(cfg: ServiceConfig) -> TrackerClient:
         from .jira import JiraClient
 
         return JiraClient(cfg.tracker)
+    if kind == "github":
+        from .github import GitHubClient
+
+        return GitHubClient(cfg.tracker)
     raise UnsupportedTrackerKind("tracker kind not supported", kind=kind)
 
 
