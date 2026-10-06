@@ -79,6 +79,28 @@ def validate_for_dispatch(config: ServiceConfig) -> None:
                 "github tracker canary refuses automatic merge outside "
                 "preview or vercel-preview"
             )
+        if config.git.auto_pr.enabled:
+            if config.agent.auto_merge_on_done:
+                raise ConfigValidationError(
+                    "github tracker canary cannot enable git.auto_pr while "
+                    "agent.auto_merge_on_done is enabled"
+                )
+            if config.git.auto_pr.base not in preview_branches:
+                raise ConfigValidationError(
+                    "github tracker canary requires git.auto_pr.base to be "
+                    "preview or vercel-preview"
+                )
+            known_states = {
+                state.strip().lower()
+                for state in (
+                    *config.tracker.active_states,
+                    *config.tracker.terminal_states,
+                )
+            }
+            if config.git.auto_pr.trigger_state.strip().lower() not in known_states:
+                raise ConfigValidationError(
+                    "git.auto_pr.trigger_state must name a configured tracker state"
+                )
     if config.tracker.kind == "file":
         if config.tracker.board_root is None:
             raise ConfigValidationError(

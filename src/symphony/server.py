@@ -267,10 +267,9 @@ async def run_server(
     # when the server itself is loopback-bound; record the bind address.
     app[BIND_HOST_KEY] = host
     if host.lower() not in _LOOPBACK_BINDS and _configured_api_token() is None:
-        log.warning(
-            "http_server_unauthenticated_on_network_bind",
-            host=host,
-            hint=f"set {API_TOKEN_ENV} or bind to 127.0.0.1",
+        raise RuntimeError(
+            f"refusing unauthenticated non-loopback bind {host!r}; "
+            f"set {API_TOKEN_ENV} or bind to 127.0.0.1"
         )
     runner = web.AppRunner(app)
     await runner.setup()

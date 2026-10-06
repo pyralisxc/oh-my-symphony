@@ -133,3 +133,58 @@ def test_github_tracker_canary_requires_explicit_preview_feature_base(
     )
     with pytest.raises(ConfigValidationError, match="feature_base_branch"):
         validate_for_dispatch(cfg)
+
+
+def test_github_canary_allows_preview_auto_pr_when_auto_merge_is_off(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-token")
+    cfg = build_service_config(
+        load_workflow(
+            _write(
+                tmp_path,
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "  active_states: [Ready, In Progress, Review]\n"
+                "  terminal_states: [Done, Blocked]\n"
+                "agent:\n"
+                "  auto_merge_on_done: false\n"
+                "  feature_base_branch: preview\n"
+                "git:\n"
+                "  auto_pr:\n"
+                "    enabled: true\n"
+                "    base: preview\n"
+                "    trigger_state: Review\n"
+                "---\nBody\n",
+            )
+        )
+    )
+    validate_for_dispatch(cfg)
+    assert cfg.git.auto_pr.enabled is True
+    assert cfg.git.auto_pr.base == "preview"
+
+
+def test_github_canary_rejects_auto_pr_to_main(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-token")
+    cfg = build_service_config(
+        load_workflow(
+            _write(
+                tmp_path,
+                "---\n"
+                "tracker:\n"
+                "  kind: github\n"
+                "  project_slug: owner/repo\n"
+                "agent:\n"
+                "  auto_merge_on_done: false\n"
+                "  feature_base_branch: preview\n"
+                "git:\n"
+                "  auto_pr:\n"
+                "    enabled: true\n"
+                "    base: main\n"
+                "    trigger_state: Review\n"
+                "---\nBody\n",
+            )
+        )
+    )
+    with pytest.raises(ConfigValidationError, match="git.auto_pr.base"):
+        validate_for_dispatch(cfg)

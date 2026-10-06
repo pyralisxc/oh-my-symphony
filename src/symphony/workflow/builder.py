@@ -45,6 +45,8 @@ from .config import (
     PiConfig,
     PrimeAgentConfig,
     ArtifactsConfig,
+    AutoPrConfig,
+    GitConfig,
     PreviewConfig,
     ProgressConfig,
     PromptConfig,
@@ -861,6 +863,31 @@ def build_service_config(
         cfg.get("continuous_improvement")
     )
 
+    git_raw = cfg.get("git") or {}
+    if not isinstance(git_raw, dict):
+        git_raw = {}
+    auto_pr_raw = git_raw.get("auto_pr") or {}
+    if not isinstance(auto_pr_raw, dict):
+        auto_pr_raw = {}
+    auto_pr_base = _as_str(auto_pr_raw.get("base")).strip()
+    git_config = GitConfig(
+        auto_pr=AutoPrConfig(
+            enabled=_validated_bool(
+                auto_pr_raw.get("enabled"), False, name="git.auto_pr.enabled"
+            ),
+            remote=_as_str(auto_pr_raw.get("remote"), "origin").strip() or "origin",
+            base=(
+                auto_pr_base
+                or agent.auto_merge_target_branch
+                or agent.feature_base_branch
+                or "main"
+            ),
+            trigger_state=(
+                _as_str(auto_pr_raw.get("trigger_state"), "Review").strip()
+                or "Review"
+            ),
+        )
+    )
     if log_decisions:
         _log_stage_contracts_decision(agent, tracker)
 
@@ -892,6 +919,7 @@ def build_service_config(
         workspace_reuse_policy=workspace_reuse_policy,
         preview=preview,
         artifacts=artifacts,
+        git=git_config,
     )
 
 

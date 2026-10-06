@@ -185,13 +185,12 @@ async def _run_server_log(
         await runner.cleanup()
 
 
-async def test_run_server_warns_when_non_loopback_bind_has_no_api_token(
+async def test_run_server_refuses_non_loopback_bind_without_api_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(API_TOKEN_ENV, raising=False)
-    exposed = await _run_server_log(monkeypatch, "0.0.0.0")
-    assert "level=WARN" in exposed
-    assert "unauthenticated" in exposed
+    with pytest.raises(RuntimeError, match="refusing unauthenticated non-loopback bind"):
+        await _run_server_log(monkeypatch, "0.0.0.0")
 
     monkeypatch.setenv(API_TOKEN_ENV, "sekrit-token")
     tokenized = await _run_server_log(monkeypatch, "0.0.0.0")
