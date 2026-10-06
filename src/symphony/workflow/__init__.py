@@ -90,6 +90,8 @@ from .coercion import (
 from .config import (
     AgentConfig,
     AgyConfig,
+    AutoPrConfig,
+    GitConfig,
     ClaudeConfig,
     CodexConfig,
     ContinuousImprovementConfig,
@@ -127,6 +129,8 @@ __all__ = [
     "HooksConfig",
     "AgentConfig",
     "AgyConfig",
+    "AutoPrConfig",
+    "GitConfig",
     "CodexConfig",
     "ClaudeConfig",
     "GeminiConfig",
