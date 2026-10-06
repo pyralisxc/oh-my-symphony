@@ -145,6 +145,8 @@ def test_github_canary_allows_preview_auto_pr_when_auto_merge_is_off(tmp_path, m
                 "tracker:\n"
                 "  kind: github\n"
                 "  project_slug: owner/repo\n"
+                "  active_states: [Ready, In Progress, Review]\n"
+                "  terminal_states: [Done, Blocked]\n"
                 "agent:\n"
                 "  auto_merge_on_done: false\n"
                 "  feature_base_branch: preview\n"
