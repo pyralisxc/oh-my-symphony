@@ -18,6 +18,7 @@ from ..workflow import TrackerConfig
 
 PAGE_SIZE = 100
 MAX_PAGES = 10
+AUTOMATION_ELIGIBLE_LABEL = "automation-eligible"
 
 
 def _slug(state: str) -> str:
@@ -77,6 +78,7 @@ class GitHubClient:
             issue
             for issue in self._list_issues(state="open", minimal=False)
             if _slug(issue.state) in active
+            and AUTOMATION_ELIGIBLE_LABEL in issue.labels
         ]
 
     def fetch_issues_by_states(self, state_names: Iterable[str]) -> list[Issue]:

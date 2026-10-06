@@ -61,6 +61,24 @@ def validate_for_dispatch(config: ServiceConfig) -> None:
             raise MissingTrackerProjectSlug(
                 "tracker.project_slug required for github tracker (owner/repository)"
             )
+        if config.agent.max_concurrent_agents != 1:
+            raise ConfigValidationError(
+                "github tracker canary requires agent.max_concurrent_agents=1"
+            )
+        preview_branches = {"preview", "vercel-preview"}
+        if config.agent.feature_base_branch not in preview_branches:
+            raise ConfigValidationError(
+                "github tracker canary requires agent.feature_base_branch "
+                "to be preview or vercel-preview"
+            )
+        if (
+            config.agent.auto_merge_on_done
+            and config.agent.auto_merge_target_branch not in preview_branches
+        ):
+            raise ConfigValidationError(
+                "github tracker canary refuses automatic merge outside "
+                "preview or vercel-preview"
+            )
     if config.tracker.kind == "file":
         if config.tracker.board_root is None:
             raise ConfigValidationError(
