@@ -36,6 +36,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar, cast
 from .. import __version__
 from .._shell import kill_process_group, process_group_exists, process_identity
 from ..artifacts import ArtifactRecord, ArtifactStore, format_bytes
+from ..auto_pr import maybe_open_pull_request
 from ..backends import (
     EVENT_AGENT_RETRY,
     EVENT_APPROVAL_DENIED,
@@ -4892,11 +4893,53 @@ class Orchestrator:
         finally:
             client.close()
         self._record_stats_transition(issue.identifier, issue.state, target_state)
-        # Notifications fire after the tracker write succeeds. If the write
-        # raised, we never reach here — operators see the failure in logs
-        # instead of a misleading "moved to X" Slack ping. Lenient by
-        # design: dispatch_notification swallows network errors.
+        # Notifications and delivery side effects fire only after the tracker
+        # write succeeds. They are lenient: a Slack or PR transport failure
+        # must not turn a valid state transition into a broken worker.
         _notify_state_transition(cfg, issue, target_state)
+        maybe_open_pull_request(
+            cfg,
+            issue,
+            target_state,
+            append_note=lambda i, heading, body: self._tracker_call_append_note(
+                cfg, i, heading, body
+            ),
+        )
+
+    async def _observed_transition_side_effects(
+        self,
+        cfg: ServiceConfig,
+        issue: Issue,
+        prev_state: str,
+        target_state: str,
+    ) -> None:
+        """Mirror host-owned side effects for worker-written tracker moves."""
+        if normalize_state(prev_state) == normalize_state(target_state):
+            return
+        if not (cfg.notifications.has_any() or cfg.git.auto_pr.enabled):
+            return
+        try:
+            event_issue = replace(issue, state=prev_state) if prev_state else issue
+            await asyncio.to_thread(
+                _notify_state_transition, cfg, event_issue, target_state
+            )
+            await asyncio.to_thread(
+                maybe_open_pull_request,
+                cfg,
+                issue,
+                target_state,
+                append_note=lambda i, heading, body: self._tracker_call_append_note(
+                    cfg, i, heading, body
+                ),
+            )
+        except Exception as exc:
+            log.warning(
+                "observed_transition_side_effects_failed",
+                issue_id=issue.id,
+                identifier=issue.identifier,
+                to_state=target_state,
+                error=str(exc),
+            )
 
     @staticmethod
     def _tracker_call_append_note(
